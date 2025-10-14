@@ -1,15 +1,15 @@
 # ✈️ AMS SSIM Converter
 
-**Professional W25 Amsterdam schedule to IATA SSIM converter**  
+**Professional Dutch Schedule (Escala Holandesa) to IATA SSIM converter**  
 **Developed by Capacity Dnata Brasil - AMS Team**
 
 ## 🔧 Features
 
-* ✅ **W25 Amsterdam format support** - Specialized for Schiphol Airport operations
+* ✅ **Escala Holandesa format support** - Specialized for Amsterdam Schiphol Airport operations
 * ✅ **SSIM compliance** - Standard 200-character line format
 * ✅ **Link flights** - Automatic turnaround and night stop processing
 * ✅ **AMS timezone processing** - Native +0100 (CET/CEST) support
-* ✅ **Multi-airline support** - Single or all airlines conversion
+* ✅ **Multi-airline support** - Single, Multiple (Custom Selection), or All airlines conversion
 * ✅ **Bilingual interface** - English and Dutch language support
 * ✅ **Professional UI** - Dutch-themed orange design
 

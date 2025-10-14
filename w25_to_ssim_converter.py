@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Conversor W25 Amsterdam Schedule para SSIM - AMS Team
+Conversor Escala Holandesa (Amsterdam Schedule) para SSIM - AMS Team
 Desenvolvido por Capacity Dnata Brasil - 14/10/2025
+Baseado no padrão SIRIUM com adaptações para formato holandês
 """
 
 import pandas as pd
@@ -15,7 +16,7 @@ def ajustar_linha(line, comprimento=200):
 
 def extrair_airline_w25(flight_number):
     """
-    Extrai código da companhia aérea do número do voo W25
+    Extrai código da companhia aérea do número do voo
     Exemplo: '6E0021' → '6E', 'AI155' → 'AI'
     """
     if pd.isna(flight_number) or flight_number == 'N/S':
@@ -29,14 +30,14 @@ def extrair_airline_w25(flight_number):
         airline = match.group(1)
         # Garantir que tem pelo menos 2 caracteres
         if len(airline) == 1:
-            airline = airline + "X"  # Padding se necessário
-        return airline[:2]  # Máximo 2 caracteres para IATA
+            airline = airline + "X"
+        return airline[:2]
     
-    return "XX"  # Fallback
+    return "XX"
 
 def extrair_numero_voo_w25(flight_number):
     """
-    Extrai número do voo do flight number W25
+    Extrai número do voo do flight number
     Exemplo: '6E0021' → '0021', 'AI155' → '155'
     """
     if pd.isna(flight_number) or flight_number == 'N/S':
@@ -48,40 +49,36 @@ def extrair_numero_voo_w25(flight_number):
     match = re.search(r'([0-9]+)', flight_str)
     if match:
         numero = match.group(1)
-        # Garantir que tem pelo menos 3 dígitos
-        return numero.zfill(4)[:4]  # Máximo 4 dígitos
+        return numero.zfill(4)[:4]
     
-    return "001"  # Fallback
+    return "001"
 
 def processar_aty_w25(aty_value):
     """
-    Processa código ATY do W25, removendo barra se existir
+    Processa código ATY, removendo barra se existir
     Exemplo: '320/321' → '320'
     """
     if pd.isna(aty_value):
-        return "320"  # Default
+        return "320"
     
     aty_str = str(aty_value).strip().upper()
     
-    # Se tem barra, pegar apenas a parte antes
     if '/' in aty_str:
         aty_str = aty_str.split('/')[0].strip()
     
-    # Remover espaços e caracteres especiais
     aty_clean = re.sub(r'[^A-Z0-9]', '', aty_str)
     
     return aty_clean[:3] if aty_clean else "320"
 
 def converter_horario_w25(time_value):
     """
-    Converte horário W25 para formato SSIM HHMM
+    Converte horário para formato SSIM HHMM
     """
     if pd.isna(time_value):
         return "0000"
     
     try:
         if isinstance(time_value, str):
-            # Tentar diferentes formatos
             for fmt in ['%H:%M:%S', '%H:%M', '%H%M', '%H.%M']:
                 try:
                     time_obj = datetime.strptime(time_value.strip(), fmt)
@@ -89,10 +86,8 @@ def converter_horario_w25(time_value):
                 except:
                     continue
         elif hasattr(time_value, 'hour'):
-            # Se é objeto datetime/time
             return f"{time_value.hour:02d}{time_value.minute:02d}"
         else:
-            # Tentar converter para string e processar
             time_str = str(time_value).strip()
             if ':' in time_str:
                 parts = time_str.split(':')
@@ -114,7 +109,12 @@ def gerar_operating_days_w25(row):
         if col_name in row and not pd.isna(row[col_name]) and str(row[col_name]).strip() != "":
             days += str(i)
     
-    return days if days else "1234567"  # Default todos os dias
+    # Se não tem dias, usar todos
+    if not days:
+        days = "1234567"
+    
+    # Completar com espaços até 7 caracteres
+    return days.ljust(7)[:7]
 
 def processar_periodo_w25(from_date, till_date):
     """
@@ -126,7 +126,6 @@ def processar_periodo_w25(from_date, till_date):
         if pd.isna(till_date):
             till_date = datetime.now() + timedelta(days=365)
         
-        # Converter para datetime se necessário
         if isinstance(from_date, str):
             from_date = pd.to_datetime(from_date)
         if isinstance(till_date, str):
@@ -139,11 +138,11 @@ def processar_periodo_w25(from_date, till_date):
 
 def processar_flt_type_w25(flt_type):
     """
-    Processa FLT.TYPE do W25 para determinar tipo de serviço
+    Processa FLT.TYPE para determinar tipo de serviço
     J/J = Passenger/Passenger, F/F = Cargo/Cargo
     """
     if pd.isna(flt_type):
-        return "J", "J"  # Default passenger
+        return "J", "J"
     
     flt_str = str(flt_type).strip().upper()
     
@@ -155,31 +154,17 @@ def processar_flt_type_w25(flt_type):
     
     return flt_str, flt_str
 
-def encontrar_night_stop_pair(df, current_idx):
-    """
-    Encontra o par de night stop na linha seguinte
-    """
-    if current_idx + 1 < len(df):
-        next_row = df.iloc[current_idx + 1]
-        current_row = df.iloc[current_idx]
-        
-        # Verificar se é o mesmo voo base
-        current_aflt = current_row.get('A.FLT', '')
-        next_dflt = next_row.get('D.FLT', '')
-        
-        if (not pd.isna(current_aflt) and not pd.isna(next_dflt) and 
-            extrair_airline_w25(current_aflt) == extrair_airline_w25(next_dflt)):
-            return next_row
-    
-    return None
-
 def gerar_ssim_w25_single_airline(excel_path, codigo_iata, output_file=None):
     """
-    Gera arquivo SSIM para uma companhia específica a partir de dados W25
+    Gera arquivo SSIM para uma companhia específica a partir da Escala Holandesa
     """
     try:
+        print(f"🔄 GERANDO SSIM PARA {codigo_iata}")
+        print("=" * 60)
+        
         # Ler arquivo Excel
         df = pd.read_excel(excel_path)
+        print(f"✅ Arquivo lido: {len(df)} linhas")
         
         # Filtrar por companhia aérea
         df_filtered = df[df.apply(lambda row: 
@@ -187,106 +172,364 @@ def gerar_ssim_w25_single_airline(excel_path, codigo_iata, output_file=None):
             extrair_airline_w25(row.get('D.FLT', '')) == codigo_iata, axis=1)]
         
         if df_filtered.empty:
-            return f"Nenhum voo encontrado para a companhia {codigo_iata}"
+            return None
         
-        # Reset index para facilitar processamento
+        print(f"📊 Voos encontrados: {len(df_filtered)}")
+        
         df_filtered = df_filtered.reset_index(drop=True)
         
-        # Gerar linhas SSIM
-        ssim_lines = []
-        line_number = 1
-        processed_indices = set()  # Para evitar processar a mesma linha duas vezes
+        # Preparar arquivo de saída
+        if output_file is None:
+            data_atual = datetime.now()
+            output_file = f"{codigo_iata}_{data_atual.strftime('%Y%m%d')}_AMS.ssim"
         
-        # Header (Linha 1)
-        header = "1AIRLINE STANDARD SCHEDULE DATA SET"
-        ssim_lines.append(ajustar_linha(header + f"{line_number:08d}"))
-        line_number += 1
-        
-        # Carrier Info (Linha 2U)
-        data_atual = datetime.now()
-        carrier_info = f"2U{codigo_iata}  0008    {data_atual.strftime('%d%b%y').upper()}{data_atual.strftime('%d%b%y').upper()}{data_atual.strftime('%d%b%y').upper()}Created by AMS Team Dnata Brasil    P"
-        ssim_lines.append(ajustar_linha(carrier_info + f"EN08{line_number:08d}"))
-        line_number += 1
-        
-        # Flight Records (Linha 3)
-        for idx, row in df_filtered.iterrows():
-            if idx in processed_indices:
-                continue
+        with open(output_file, 'w', encoding='utf-8') as file:
+            numero_linha = 1
+            data_emissao = datetime.now().strftime('%d%b%y').upper()
+            
+            # Header (Linha 1)
+            header_content = "1AIRLINE STANDARD SCHEDULE DATA SET"
+            numero_linha_str = f"{numero_linha:08}"
+            espacos_header = 200 - len(header_content) - len(numero_linha_str)
+            linha_1 = header_content + (' ' * espacos_header) + numero_linha_str
+            file.write(linha_1 + "\n")
+            numero_linha += 1
+            
+            # 4 linhas de zeros
+            for _ in range(4):
+                zeros_line = "0" * 200
+                file.write(zeros_line + "\n")
+                numero_linha += 1
+            
+            # Carrier Info (Linha 2U)
+            numero_linha_str = f"{numero_linha:08}"
+            linha_2_content = f"2U{codigo_iata}  0008    {data_emissao}{data_emissao}{data_emissao}Created by AMS Team Dnata Brasil    P"
+            espacos_necessarios = 200 - len(linha_2_content) - 4 - len(numero_linha_str)
+            linha_2 = linha_2_content + (' ' * espacos_necessarios) + "EN08" + numero_linha_str
+            file.write(linha_2 + "\n")
+            numero_linha += 1
+            
+            # 4 linhas de zeros
+            for _ in range(4):
+                zeros_line = "0" * 200
+                file.write(zeros_line + "\n")
+                numero_linha += 1
+            
+            # Flight Records (Linha 3)
+            processed_indices = set()
+            flight_date_counter = {}
+            
+            for idx, row in df_filtered.iterrows():
+                if idx in processed_indices:
+                    continue
                 
-            # Processar período de operação
-            from_date, till_date = processar_periodo_w25(row.get('FROM'), row.get('TILL'))
+                from_date, till_date = processar_periodo_w25(row.get('FROM'), row.get('TILL'))
+                arrive_type, depart_type = processar_flt_type_w25(row.get('FLT.TYPE'))
+                frequencia = gerar_operating_days_w25(row)
+                equipamento = processar_aty_w25(row.get('ATY', '320'))
+                
+                # Processar voo de chegada (A.FLT)
+                if not pd.isna(row.get('A.FLT')) and row.get('A.FLT') != 'N/S':
+                    airline_code = extrair_airline_w25(row['A.FLT'])
+                    if airline_code == codigo_iata:
+                        numero_voo = extrair_numero_voo_w25(row['A.FLT'])
+                        sta = converter_horario_w25(row.get('STA', ''))
+                        orig = str(row.get('ORIG', 'XXX'))[:3].upper()
+                        
+                        # Calcular STD (2h antes)
+                        try:
+                            sta_time = datetime.strptime(sta, '%H%M')
+                            std_time = sta_time - timedelta(hours=2)
+                            std = std_time.strftime('%H%M')
+                        except:
+                            std = "0600"
+                        
+                        # Date counter
+                        voo_key = f"{codigo_iata}_{numero_voo}_ARR"
+                        if voo_key not in flight_date_counter:
+                            flight_date_counter[voo_key] = 0
+                        flight_date_counter[voo_key] += 1
+                        date_counter = flight_date_counter[voo_key]
+                        
+                        # Construir linha 3
+                        numero_voo_padded = numero_voo.zfill(4)
+                        etapa = "01"
+                        eight_char_field = f"{numero_voo_padded}{str(date_counter).zfill(2)}{etapa}"
+                        numero_voo_display = numero_voo.rjust(5)
+                        numero_linha_str = f"{numero_linha:08}"
+                        
+                        linha_3 = (
+                            f"3 "
+                            f"{codigo_iata:<2} "
+                            f"{eight_char_field}"
+                            f"{arrive_type}"
+                            f"{from_date}"
+                            f"{till_date}"
+                            f"{frequencia}"
+                            f" "
+                            f"{orig:<3}"
+                            f"{std}"
+                            f"{std}"
+                            f"+0000"
+                            f"  "
+                            f"AMS"
+                            f"{sta}"
+                            f"{sta}"
+                            f"+0100"
+                            f"  "
+                            f"{equipamento:<3}"
+                            f"{' ':53}"
+                            f"{codigo_iata:<2}"
+                            f"{' ':7}"
+                            f"{codigo_iata:<2}"
+                            f"{numero_voo_display}"
+                            f"{' ':28}"
+                            f"{' ':6}"
+                            f"{' ':5}"
+                            f"{' ':9}"
+                            f"{numero_linha_str}"
+                        )
+                        
+                        linha_3 = linha_3.ljust(200)
+                        file.write(linha_3 + "\n")
+                        numero_linha += 1
+                
+                # Processar voo de saída (D.FLT)
+                if not pd.isna(row.get('D.FLT')) and row.get('D.FLT') != 'N/S':
+                    airline_code = extrair_airline_w25(row['D.FLT'])
+                    if airline_code == codigo_iata:
+                        numero_voo = extrair_numero_voo_w25(row['D.FLT'])
+                        std = converter_horario_w25(row.get('STD', ''))
+                        dest = str(row.get('DEST', 'XXX'))[:3].upper()
+                        
+                        # Calcular STA (2h depois)
+                        try:
+                            std_time = datetime.strptime(std, '%H%M')
+                            sta_time = std_time + timedelta(hours=2)
+                            sta = sta_time.strftime('%H%M')
+                        except:
+                            sta = "1400"
+                        
+                        # Date counter
+                        voo_key = f"{codigo_iata}_{numero_voo}_DEP"
+                        if voo_key not in flight_date_counter:
+                            flight_date_counter[voo_key] = 0
+                        flight_date_counter[voo_key] += 1
+                        date_counter = flight_date_counter[voo_key]
+                        
+                        # Construir linha 3
+                        numero_voo_padded = numero_voo.zfill(4)
+                        etapa = "01"
+                        eight_char_field = f"{numero_voo_padded}{str(date_counter).zfill(2)}{etapa}"
+                        numero_voo_display = numero_voo.rjust(5)
+                        numero_linha_str = f"{numero_linha:08}"
+                        
+                        linha_3 = (
+                            f"3 "
+                            f"{codigo_iata:<2} "
+                            f"{eight_char_field}"
+                            f"{depart_type}"
+                            f"{from_date}"
+                            f"{till_date}"
+                            f"{frequencia}"
+                            f" "
+                            f"AMS"
+                            f"{std}"
+                            f"{std}"
+                            f"+0100"
+                            f"  "
+                            f"{dest:<3}"
+                            f"{sta}"
+                            f"{sta}"
+                            f"+0000"
+                            f"  "
+                            f"{equipamento:<3}"
+                            f"{' ':53}"
+                            f"{codigo_iata:<2}"
+                            f"{' ':7}"
+                            f"{codigo_iata:<2}"
+                            f"{numero_voo_display}"
+                            f"{' ':28}"
+                            f"{' ':6}"
+                            f"{' ':5}"
+                            f"{' ':9}"
+                            f"{numero_linha_str}"
+                        )
+                        
+                        linha_3 = linha_3.ljust(200)
+                        file.write(linha_3 + "\n")
+                        numero_linha += 1
             
-            # Processar tipo de voo
-            arrive_type, depart_type = processar_flt_type_w25(row.get('FLT.TYPE'))
+            # 4 linhas de zeros finais
+            for _ in range(4):
+                zeros_line = "0" * 200
+                file.write(zeros_line + "\n")
+                numero_linha += 1
             
-            # Processar voo de chegada (A.FLT)
-            if not pd.isna(row.get('A.FLT')) and row.get('A.FLT') != 'N/S':
-                airline_code = extrair_airline_w25(row['A.FLT'])
-                if airline_code == codigo_iata:
-                    flight_num = extrair_numero_voo_w25(row['A.FLT'])
-                    sta = converter_horario_w25(row.get('STA', ''))
-                    orig = str(row.get('ORIG', 'XXX'))[:3]
-                    aty = processar_aty_w25(row.get('ATY', '320'))
-                    days = gerar_operating_days_w25(row)
-                    
-                    # Calcular horário de saída (2h antes da chegada como padrão)
-                    try:
-                        sta_time = datetime.strptime(sta, '%H%M')
-                        std_time = sta_time - timedelta(hours=2)
-                        std = std_time.strftime('%H%M')
-                    except:
-                        std = "0600"  # Default
-                    
-                    # Determinar next flight
-                    next_flight = ""
-                    if not pd.isna(row.get('D.FLT')) and row.get('D.FLT') != 'N/S':
-                        next_flight = f"{codigo_iata} {extrair_numero_voo_w25(row['D.FLT'])}"
-                    
-                    flight_line = f"3 {codigo_iata} {flight_num}0101{arrive_type}{from_date}{till_date}{days} {orig}{std}{std}+0000  AMS{sta}{sta}+0100  {aty}"
-                    ssim_lines.append(ajustar_linha(flight_line + f"{next_flight:<15}" + f"{line_number:08d}"))
-                    line_number += 1
+            # Footer (Linha 5)
+            numero_linha_str = f"{numero_linha + 1:06}"
+            linha_5_content = f"5 {codigo_iata} {data_emissao}"
+            numero_linha_str2 = f"{numero_linha:06}E"
+            espacos_necessarios = 200 - len(linha_5_content) - len(numero_linha_str) - len(numero_linha_str2)
+            linha_5 = linha_5_content + (' ' * espacos_necessarios) + numero_linha_str2 + numero_linha_str
+            file.write(linha_5 + "\n")
+        
+        print(f"✅ Arquivo SSIM gerado: {output_file}")
+        print(f"📊 Total de linhas: {numero_linha}")
+        print("=" * 60)
+        
+        return output_file
+        
+    except Exception as e:
+        print(f"❌ Erro: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+def gerar_ssim_w25_multiplas_companias(excel_path, companias_list, output_file=None):
+    """
+    Gera arquivo SSIM para múltiplas companhias selecionadas
+    """
+    try:
+        print(f"🔄 GERANDO SSIM PARA COMPANHIAS: {', '.join(companias_list)}")
+        print("=" * 60)
+        
+        # Ler arquivo Excel
+        df = pd.read_excel(excel_path)
+        print(f"✅ Arquivo lido: {len(df)} linhas")
+        
+        # Preparar arquivo de saída
+        if output_file is None:
+            data_atual = datetime.now()
+            companias_str = '_'.join(companias_list)
+            output_file = f"{companias_str}_{data_atual.strftime('%Y%m%d')}_AMS.ssim"
+        
+        with open(output_file, 'w', encoding='utf-8') as file:
+            numero_linha = 1
+            data_emissao = datetime.now().strftime('%d%b%y').upper()
             
-            # Processar voo de saída (D.FLT)
-            if not pd.isna(row.get('D.FLT')) and row.get('D.FLT') != 'N/S':
-                airline_code = extrair_airline_w25(row['D.FLT'])
-                if airline_code == codigo_iata:
-                    flight_num = extrair_numero_voo_w25(row['D.FLT'])
-                    std = converter_horario_w25(row.get('STD', ''))
-                    dest = str(row.get('DEST', 'XXX'))[:3]
-                    aty = processar_aty_w25(row.get('ATY', '320'))
-                    days = gerar_operating_days_w25(row)
-                    
-                    # Calcular horário de chegada (2h após a saída como padrão)
-                    try:
-                        std_time = datetime.strptime(std, '%H%M')
-                        sta_time = std_time + timedelta(hours=2)
-                        sta = sta_time.strftime('%H%M')
-                    except:
-                        sta = "1400"  # Default
-                    
-                    flight_line = f"3 {codigo_iata} {flight_num}0101{depart_type}{from_date}{till_date}{days} AMS{std}{std}+0100  {dest}{sta}{sta}+0000  {aty}"
-                    ssim_lines.append(ajustar_linha(flight_line + f"{' ':<15}" + f"{line_number:08d}"))
-                    line_number += 1
+            # Header (Linha 1)
+            header_content = "1AIRLINE STANDARD SCHEDULE DATA SET"
+            numero_linha_str = f"{numero_linha:08}"
+            espacos_header = 200 - len(header_content) - len(numero_linha_str)
+            linha_1 = header_content + (' ' * espacos_header) + numero_linha_str
+            file.write(linha_1 + "\n")
+            numero_linha += 1
             
-            # Verificar night stop
-            elif (not pd.isna(row.get('A.FLT')) and row.get('A.FLT') != 'N/S' and 
-                  str(row.get('DEST', '')).upper() == 'N/S'):
-                # Procurar par de night stop
-                ns_pair = encontrar_night_stop_pair(df_filtered, idx)
-                if ns_pair is not None:
-                    processed_indices.add(idx + 1)  # Marcar próxima linha como processada
+            # 4 linhas de zeros
+            for _ in range(4):
+                zeros_line = "0" * 200
+                file.write(zeros_line + "\n")
+                numero_linha += 1
+            
+            # Processar cada companhia
+            flight_date_counter = {}
+            
+            for companhia in companias_list:
+                print(f"🔄 Processando {companhia}...")
+                
+                # Filtrar por companhia
+                df_filtered = df[df.apply(lambda row: 
+                    extrair_airline_w25(row.get('A.FLT', '')) == companhia or 
+                    extrair_airline_w25(row.get('D.FLT', '')) == companhia, axis=1)]
+                
+                if df_filtered.empty:
+                    continue
+                
+                df_filtered = df_filtered.reset_index(drop=True)
+                
+                # Carrier Info para esta companhia
+                numero_linha_str = f"{numero_linha:08}"
+                linha_2_content = f"2U{companhia}  0008    {data_emissao}{data_emissao}{data_emissao}Created by AMS Team Dnata Brasil    P"
+                espacos_necessarios = 200 - len(linha_2_content) - 4 - len(numero_linha_str)
+                linha_2 = linha_2_content + (' ' * espacos_necessarios) + "EN08" + numero_linha_str
+                file.write(linha_2 + "\n")
+                numero_linha += 1
+                
+                # 4 linhas de zeros
+                for _ in range(4):
+                    zeros_line = "0" * 200
+                    file.write(zeros_line + "\n")
+                    numero_linha += 1
+                
+                # Flight Records (usar mesma lógica do single airline)
+                for idx, row in df_filtered.iterrows():
+                    from_date, till_date = processar_periodo_w25(row.get('FROM'), row.get('TILL'))
+                    arrive_type, depart_type = processar_flt_type_w25(row.get('FLT.TYPE'))
+                    frequencia = gerar_operating_days_w25(row)
+                    equipamento = processar_aty_w25(row.get('ATY', '320'))
                     
-                    # Processar voo de saída do night stop
-                    if not pd.isna(ns_pair.get('D.FLT')):
-                        airline_code = extrair_airline_w25(ns_pair['D.FLT'])
-                        if airline_code == codigo_iata:
-                            flight_num = extrair_numero_voo_w25(ns_pair['D.FLT'])
-                            std = converter_horario_w25(ns_pair.get('STD', ''))
-                            dest = str(ns_pair.get('DEST', 'XXX'))[:3]
-                            aty = processar_aty_w25(ns_pair.get('ATY', '320'))
-                            days = gerar_operating_days_w25(ns_pair)
+                    # Voo de chegada
+                    if not pd.isna(row.get('A.FLT')) and row.get('A.FLT') != 'N/S':
+                        airline_code = extrair_airline_w25(row['A.FLT'])
+                        if airline_code == companhia:
+                            numero_voo = extrair_numero_voo_w25(row['A.FLT'])
+                            sta = converter_horario_w25(row.get('STA', ''))
+                            orig = str(row.get('ORIG', 'XXX'))[:3].upper()
                             
-                            # Calcular horário de chegada
+                            try:
+                                sta_time = datetime.strptime(sta, '%H%M')
+                                std_time = sta_time - timedelta(hours=2)
+                                std = std_time.strftime('%H%M')
+                            except:
+                                std = "0600"
+                            
+                            voo_key = f"{companhia}_{numero_voo}_ARR"
+                            if voo_key not in flight_date_counter:
+                                flight_date_counter[voo_key] = 0
+                            flight_date_counter[voo_key] += 1
+                            date_counter = flight_date_counter[voo_key]
+                            
+                            numero_voo_padded = numero_voo.zfill(4)
+                            etapa = "01"
+                            eight_char_field = f"{numero_voo_padded}{str(date_counter).zfill(2)}{etapa}"
+                            numero_voo_display = numero_voo.rjust(5)
+                            numero_linha_str = f"{numero_linha:08}"
+                            
+                            linha_3 = (
+                                f"3 "
+                                f"{companhia:<2} "
+                                f"{eight_char_field}"
+                                f"{arrive_type}"
+                                f"{from_date}"
+                                f"{till_date}"
+                                f"{frequencia}"
+                                f" "
+                                f"{orig:<3}"
+                                f"{std}"
+                                f"{std}"
+                                f"+0000"
+                                f"  "
+                                f"AMS"
+                                f"{sta}"
+                                f"{sta}"
+                                f"+0100"
+                                f"  "
+                                f"{equipamento:<3}"
+                                f"{' ':53}"
+                                f"{companhia:<2}"
+                                f"{' ':7}"
+                                f"{companhia:<2}"
+                                f"{numero_voo_display}"
+                                f"{' ':28}"
+                                f"{' ':6}"
+                                f"{' ':5}"
+                                f"{' ':9}"
+                                f"{numero_linha_str}"
+                            )
+                            
+                            linha_3 = linha_3.ljust(200)
+                            file.write(linha_3 + "\n")
+                            numero_linha += 1
+                    
+                    # Voo de saída
+                    if not pd.isna(row.get('D.FLT')) and row.get('D.FLT') != 'N/S':
+                        airline_code = extrair_airline_w25(row['D.FLT'])
+                        if airline_code == companhia:
+                            numero_voo = extrair_numero_voo_w25(row['D.FLT'])
+                            std = converter_horario_w25(row.get('STD', ''))
+                            dest = str(row.get('DEST', 'XXX'))[:3].upper()
+                            
                             try:
                                 std_time = datetime.strptime(std, '%H%M')
                                 sta_time = std_time + timedelta(hours=2)
@@ -294,34 +537,94 @@ def gerar_ssim_w25_single_airline(excel_path, codigo_iata, output_file=None):
                             except:
                                 sta = "1400"
                             
-                            flight_line = f"3 {codigo_iata} {flight_num}0101{depart_type}{from_date}{till_date}{days} AMS{std}{std}+0100  {dest}{sta}{sta}+0000  {aty}"
-                            ssim_lines.append(ajustar_linha(flight_line + f"{' ':<15}" + f"{line_number:08d}"))
-                            line_number += 1
+                            voo_key = f"{companhia}_{numero_voo}_DEP"
+                            if voo_key not in flight_date_counter:
+                                flight_date_counter[voo_key] = 0
+                            flight_date_counter[voo_key] += 1
+                            date_counter = flight_date_counter[voo_key]
+                            
+                            numero_voo_padded = numero_voo.zfill(4)
+                            etapa = "01"
+                            eight_char_field = f"{numero_voo_padded}{str(date_counter).zfill(2)}{etapa}"
+                            numero_voo_display = numero_voo.rjust(5)
+                            numero_linha_str = f"{numero_linha:08}"
+                            
+                            linha_3 = (
+                                f"3 "
+                                f"{companhia:<2} "
+                                f"{eight_char_field}"
+                                f"{depart_type}"
+                                f"{from_date}"
+                                f"{till_date}"
+                                f"{frequencia}"
+                                f" "
+                                f"AMS"
+                                f"{std}"
+                                f"{std}"
+                                f"+0100"
+                                f"  "
+                                f"{dest:<3}"
+                                f"{sta}"
+                                f"{sta}"
+                                f"+0000"
+                                f"  "
+                                f"{equipamento:<3}"
+                                f"{' ':53}"
+                                f"{companhia:<2}"
+                                f"{' ':7}"
+                                f"{companhia:<2}"
+                                f"{numero_voo_display}"
+                                f"{' ':28}"
+                                f"{' ':6}"
+                                f"{' ':5}"
+                                f"{' ':9}"
+                                f"{numero_linha_str}"
+                            )
+                            
+                            linha_3 = linha_3.ljust(200)
+                            file.write(linha_3 + "\n")
+                            numero_linha += 1
+                
+                print(f"✅ {companhia}: {len(df_filtered)} voos processados")
+            
+            # 4 linhas de zeros finais
+            for _ in range(4):
+                zeros_line = "0" * 200
+                file.write(zeros_line + "\n")
+                numero_linha += 1
+            
+            # Footer
+            numero_linha_str = f"{numero_linha + 1:06}"
+            linha_5_content = f"5 MULTI {data_emissao}"
+            numero_linha_str2 = f"{numero_linha:06}E"
+            espacos_necessarios = 200 - len(linha_5_content) - len(numero_linha_str) - len(numero_linha_str2)
+            linha_5 = linha_5_content + (' ' * espacos_necessarios) + numero_linha_str2 + numero_linha_str
+            file.write(linha_5 + "\n")
         
-        # Footer (Linha 5)
-        footer = f"5 {codigo_iata} {data_atual.strftime('%d%b%y').upper()}"
-        ssim_lines.append(ajustar_linha(footer + f"{line_number-1:06d}E{line_number:06d}"))
+        print(f"✅ Arquivo SSIM gerado: {output_file}")
+        print(f"📊 Total de linhas: {numero_linha}")
+        print(f"🏢 Companhias: {len(companias_list)}")
+        print("=" * 60)
         
-        # Salvar arquivo
-        if output_file is None:
-            output_file = f"{codigo_iata}_{data_atual.strftime('%Y%m%d')}_W25_AMS.ssim"
-        
-        with open(output_file, 'w', encoding='utf-8') as f:
-            for line in ssim_lines:
-                f.write(line + '\n')
-        
-        return f"Arquivo SSIM gerado com sucesso: {output_file} ({len(ssim_lines)} linhas)"
+        return output_file
         
     except Exception as e:
-        return f"Erro ao processar arquivo: {str(e)}"
+        print(f"❌ Erro: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 def gerar_ssim_w25_todas_companias(excel_path, output_file=None):
     """
-    Gera arquivo SSIM para todas as companhias encontradas no W25
+    Gera arquivo SSIM para todas as companhias encontradas na Escala Holandesa
     """
     try:
+        print(f"🔄 GERANDO SSIM PARA TODAS AS COMPANHIAS")
+        print("=" * 60)
+        
         # Ler arquivo Excel
         df = pd.read_excel(excel_path)
+        print(f"✅ Arquivo lido: {len(df)} linhas")
         
         # Encontrar todas as companhias
         companias = set()
@@ -334,110 +637,20 @@ def gerar_ssim_w25_todas_companias(excel_path, output_file=None):
                             companias.add(airline)
         
         companias = sorted(list(companias))
+        print(f"🏢 Companhias encontradas: {companias}")
         
         if not companias:
-            return "Nenhuma companhia aérea válida encontrada"
+            return None
         
-        # Gerar SSIM combinado
-        all_ssim_lines = []
-        data_atual = datetime.now()
-        line_number = 1
-        
-        # Header global
-        header = "1AIRLINE STANDARD SCHEDULE DATA SET"
-        all_ssim_lines.append(ajustar_linha(header + f"{line_number:08d}"))
-        line_number += 1
-        
-        # Processar cada companhia
-        for codigo_iata in companias:
-            # Filtrar por companhia
-            df_filtered = df[df.apply(lambda row: 
-                extrair_airline_w25(row.get('A.FLT', '')) == codigo_iata or 
-                extrair_airline_w25(row.get('D.FLT', '')) == codigo_iata, axis=1)]
-            
-            if df_filtered.empty:
-                continue
-            
-            df_filtered = df_filtered.reset_index(drop=True)
-            processed_indices = set()
-            
-            # Carrier Info para esta companhia
-            carrier_info = f"2U{codigo_iata}  0008    {data_atual.strftime('%d%b%y').upper()}{data_atual.strftime('%d%b%y').upper()}{data_atual.strftime('%d%b%y').upper()}Created by AMS Team Dnata Brasil    P"
-            all_ssim_lines.append(ajustar_linha(carrier_info + f"EN08{line_number:08d}"))
-            line_number += 1
-            
-            # Flight Records para esta companhia
-            for idx, row in df_filtered.iterrows():
-                if idx in processed_indices:
-                    continue
-                    
-                from_date, till_date = processar_periodo_w25(row.get('FROM'), row.get('TILL'))
-                arrive_type, depart_type = processar_flt_type_w25(row.get('FLT.TYPE'))
-                
-                # Processar voo de chegada
-                if not pd.isna(row.get('A.FLT')) and row.get('A.FLT') != 'N/S':
-                    airline_code = extrair_airline_w25(row['A.FLT'])
-                    if airline_code == codigo_iata:
-                        flight_num = extrair_numero_voo_w25(row['A.FLT'])
-                        sta = converter_horario_w25(row.get('STA', ''))
-                        orig = str(row.get('ORIG', 'XXX'))[:3]
-                        aty = processar_aty_w25(row.get('ATY', '320'))
-                        days = gerar_operating_days_w25(row)
-                        
-                        try:
-                            sta_time = datetime.strptime(sta, '%H%M')
-                            std_time = sta_time - timedelta(hours=2)
-                            std = std_time.strftime('%H%M')
-                        except:
-                            std = "0600"
-                        
-                        next_flight = ""
-                        if not pd.isna(row.get('D.FLT')) and row.get('D.FLT') != 'N/S':
-                            next_flight = f"{codigo_iata} {extrair_numero_voo_w25(row['D.FLT'])}"
-                        
-                        flight_line = f"3 {codigo_iata} {flight_num}0101{arrive_type}{from_date}{till_date}{days} {orig}{std}{std}+0000  AMS{sta}{sta}+0100  {aty}"
-                        all_ssim_lines.append(ajustar_linha(flight_line + f"{next_flight:<15}" + f"{line_number:08d}"))
-                        line_number += 1
-                
-                # Processar voo de saída
-                if not pd.isna(row.get('D.FLT')) and row.get('D.FLT') != 'N/S':
-                    airline_code = extrair_airline_w25(row['D.FLT'])
-                    if airline_code == codigo_iata:
-                        flight_num = extrair_numero_voo_w25(row['D.FLT'])
-                        std = converter_horario_w25(row.get('STD', ''))
-                        dest = str(row.get('DEST', 'XXX'))[:3]
-                        aty = processar_aty_w25(row.get('ATY', '320'))
-                        days = gerar_operating_days_w25(row)
-                        
-                        try:
-                            std_time = datetime.strptime(std, '%H%M')
-                            sta_time = std_time + timedelta(hours=2)
-                            sta = sta_time.strftime('%H%M')
-                        except:
-                            sta = "1400"
-                        
-                        flight_line = f"3 {codigo_iata} {flight_num}0101{depart_type}{from_date}{till_date}{days} AMS{std}{std}+0100  {dest}{sta}{sta}+0000  {aty}"
-                        all_ssim_lines.append(ajustar_linha(flight_line + f"{' ':<15}" + f"{line_number:08d}"))
-                        line_number += 1
-        
-        # Footer global
-        footer = f"5 ALL {data_atual.strftime('%d%b%y').upper()}"
-        all_ssim_lines.append(ajustar_linha(footer + f"{line_number-1:06d}E{line_number:06d}"))
-        
-        # Salvar arquivo
-        if output_file is None:
-            output_file = f"ALL_AIRLINES_{data_atual.strftime('%Y%m%d')}_W25_AMS.ssim"
-        
-        with open(output_file, 'w', encoding='utf-8') as f:
-            for line in all_ssim_lines:
-                f.write(line + '\n')
-        
-        return f"Arquivo SSIM gerado com sucesso: {output_file} ({len(all_ssim_lines)} linhas, {len(companias)} companhias)"
+        # Usar função de múltiplas companhias
+        return gerar_ssim_w25_multiplas_companias(excel_path, companias, output_file)
         
     except Exception as e:
-        return f"Erro ao processar arquivo: {str(e)}"
+        print(f"❌ Erro: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 if __name__ == "__main__":
-    # Teste básico
-    print("W25 to SSIM Converter - AMS Team")
+    print("Conversor Escala Holandesa para SSIM - AMS Team")
     print("Capacity Dnata Brasil - 2025")
