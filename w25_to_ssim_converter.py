@@ -146,10 +146,10 @@ def construir_linha_ssim(airline, flight_num, itin_var, leg_seq, service_type,
     linha += " " * 7  # 130-137
     linha += f"{next_airline:<2}"  # 137-139
     linha += "  "  # 139-141
-    linha += f"{next_flight_num[-3:]:>3}"  # 141-144 (últimos 3 dígitos)
+    linha += f"{next_flight_num:>4}"  # 141-145 (4 dígitos, right-aligned)
     
-    # Pos 144-192: Espaços (48 caracteres)
-    linha += " " * 48
+    # Pos 145-192: Espaços (47 caracteres)
+    linha += " " * 47
     
     # Pos 192-200: Line Number (8 caracteres)
     linha += f"{line_num:08d}"
@@ -208,7 +208,19 @@ def gerar_ssim_completo(excel_path, companias_list=None, output_file=None):
                 file.write("0" * 200 + "\n")
                 numero_linha += 1
             
-            # PROCESSAR CADA COMPANHIA
+            # Carrier Info ÚNICA para TODAS as companhias
+            carrier_code = companias_list[0] if len(companias_list) == 1 else "XX"
+            linha_2 = f"2U{carrier_code}  0008    {data_emissao}{data_emissao}{data_emissao}Created by AMS Team Dnata Brasil    P"
+            linha_2 = linha_2.ljust(188) + "EN08" + f"{numero_linha:08}"
+            file.write(linha_2 + "\n")
+            numero_linha += 1
+            
+            # 4 zeros após carrier
+            for _ in range(4):
+                file.write("0" * 200 + "\n")
+                numero_linha += 1
+            
+            # PROCESSAR CADA COMPANHIA (SEM repetir 2U)
             flight_counter = {}
             
             for companhia in companias_list:
@@ -222,17 +234,6 @@ def gerar_ssim_completo(excel_path, companias_list=None, output_file=None):
                     continue
                 
                 df_cia = df_cia.reset_index(drop=True)
-                
-                # Carrier Info (SEM zeros antes)
-                linha_2 = f"2U{companhia}  0008    {data_emissao}{data_emissao}{data_emissao}Created by AMS Team Dnata Brasil    P"
-                linha_2 = linha_2.ljust(188) + "EN08" + f"{numero_linha:08}"
-                file.write(linha_2 + "\n")
-                numero_linha += 1
-                
-                # 4 zeros após carrier
-                for _ in range(4):
-                    file.write("0" * 200 + "\n")
-                    numero_linha += 1
                 
                 # PROCESSAR VOOS
                 voos_gerados = 0
