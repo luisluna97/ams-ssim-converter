@@ -8,10 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2025-10-14
 
 ### Added - Initial Release
-- 🚀 **Core W25 to SSIM Conversion Engine**
-  - Complete W25 Amsterdam schedule processing
+- 🚀 **Core Dutch Schedule to SSIM Conversion Engine**
+  - Complete Amsterdam schedule processing
   - IATA SSIM standard compliance (200-character lines)
   - Multi-airline support with automatic detection
+  
+### Technical Implementation
+- ✅ **Days of Operation**: Correct spacing format (e.g., "1  4 67" for days 1, 4, 6, 7)
+- ✅ **Next Flight Field**: Proper linking of turnarounds and night stops
+- ✅ **Turnaround Processing**: A.FLT + D.FLT in same row → arrival links to departure
+- ✅ **Night Stop Logic**: DEST=N/S → D.FLT shows departure flight
+- ✅ **Unlinked Flights**: Repeat own information in next flight field
+- ✅ **Single Header/Footer**: One header and footer for all airlines (no duplicates)
+- ✅ **No Mid-File Zeros**: Zero lines only at start and end of file
+- ✅ **Exact 200 Characters**: Every line precisely 200 characters
   
 - 🇳🇱 **Dutch-Themed Interface**
   - Orange color scheme (Dutch national color)
