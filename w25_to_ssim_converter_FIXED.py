@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Conversor Escala Holandesa para SSIM - VERSÃO FINAL
+Conversor Escala Holandesa para SSIM - VERSÃO CORRIGIDA
 AMS Team - Capacity Dnata Brasil - 14/10/2025
 
-LÓGICA COMPLETA:
-1. Dias operacionais: posições específicas com espaços (ex: "1  4 67")
-2. Next Flight: conecta voos em turnarounds e night stops
-3. Turnaround: A.FLT + D.FLT na mesma linha → arrival aponta para departure
-4. Night Stop: DEST=N/S → D.FLT da mesma linha mostra qual voo sai
-5. Header/Footer ÚNICOS para todas as companhias
+LÓGICA CORRETA:
+- Dias operacionais: posições específicas com espaços
+- Next Flight: campo para conectar voos
+- Turnaround: mesma linha A.FLT + D.FLT
+- Night Stop: casar por número de voo + dias operacionais
 """
 
 import pandas as pd
@@ -81,16 +80,16 @@ def gerar_dias_operacionais_ssim(row):
     """
     Gera string de dias operacionais no formato SSIM correto
     Posições 1-7, com ESPAÇOS nos dias não operacionais
-    Exemplo: '1  4 67' = dias 1, 4, 6 e 7
+    Exemplo: '1    67' = dias 1, 6 e 7
     """
-    dias = []
+    dias = ['', '', '', '', '', '', '']  # 7 posições
     
     for i in range(1, 8):
         col_name = f"OP.D.{i}" if i < 7 else "OP/D/7"
         if col_name in row and not pd.isna(row[col_name]) and str(row[col_name]).strip() != "":
-            dias.append(str(i))
+            dias[i-1] = str(i)
         else:
-            dias.append(' ')
+            dias[i-1] = ' '
     
     # Se não tem nenhum dia, usar todos
     if all(d == ' ' for d in dias):
@@ -139,7 +138,7 @@ def construir_linha_ssim(
     Constrói linha 3 do SSIM com posições EXATAS
     Total: 200 caracteres
     """
-    # Campos obrigatórios (pos 1-75)
+    # Campos obrigatórios
     linha = f"3 "  # Pos 1-2
     linha += f"{airline:<2} "  # Pos 3-5
     linha += f"{flight_num}"  # Pos 6-9
@@ -148,7 +147,7 @@ def construir_linha_ssim(
     linha += f"{service_type}"  # Pos 14
     linha += f"{period_from}"  # Pos 15-21
     linha += f"{period_to}"  # Pos 22-28
-    linha += f"{days_of_op}"  # Pos 29-35 (7 chars com espaços)
+    linha += f"{days_of_op}"  # Pos 29-35 (7 chars)
     linha += " "  # Pos 36 (Frequency Rate)
     linha += f"{dep_station:<3}"  # Pos 37-39
     linha += f"{dep_time}"  # Pos 40-43
@@ -165,12 +164,11 @@ def construir_linha_ssim(
     # Pos 76-115: Onward Airline/Flight + Airline Designator (40 chars)
     linha += " " * 40
     
-    # Pos 116-155: Next Flight Data (40 chars) - CAMPO MAIS IMPORTANTE!
-    # Formato correto: "             AA       AA  1234           "
-    #                   13 espaços + airline(2) + 7 espaços + airline(2) + 2 espaços + flight(4) + 11 espaços
+    # Pos 116-155: Next Flight Data + Airline Code/Number (40 chars)
+    # Formato: "             AA       AA 1234           "
     if next_flight_data:
         next_airline, next_flight = next_flight_data
-        next_section = f"{' ':13}{next_airline:<2}{' ':7}{next_airline:<2}  {next_flight:<4}{' ':11}"
+        next_section = f"{' ':13}{next_airline:<2}{' ':7}{next_airline:<2}{next_flight:>5}{' ':11}"
     else:
         next_section = " " * 40
     linha += next_section
@@ -192,7 +190,7 @@ def gerar_ssim_completo(excel_path, companias_list=None, output_file=None):
     Gera arquivo SSIM completo com lógica correta
     """
     try:
-        print("🔄 GERANDO SSIM - VERSÃO FINAL")
+        print("🔄 GERANDO SSIM - VERSÃO CORRIGIDA")
         print("=" * 80)
         
         # Ler Excel
@@ -211,7 +209,7 @@ def gerar_ssim_completo(excel_path, companias_list=None, output_file=None):
                                 companias.add(airline)
             companias_list = sorted(list(companias))
         
-        print(f"🏢 Companhias: {', '.join(companias_list)}")
+        print(f"🏢 Companhias: {companias_list}")
         
         # Preparar output
         if output_file is None:
@@ -225,7 +223,7 @@ def gerar_ssim_completo(excel_path, companias_list=None, output_file=None):
             numero_linha = 1
             data_emissao = datetime.now().strftime('%d%b%y').upper()
             
-            # ===== HEADER ÚNICO (para todas as companhias) =====
+            # ===== HEADER ÚNICO =====
             header_content = "1AIRLINE STANDARD SCHEDULE DATA SET"
             linha_1 = header_content.ljust(200 - 8) + f"{numero_linha:08}"
             file.write(linha_1 + "\n")
@@ -252,7 +250,7 @@ def gerar_ssim_completo(excel_path, companias_list=None, output_file=None):
                 
                 df_cia = df_cia.reset_index(drop=True)
                 
-                # Carrier Info (2U) para esta companhia
+                # Carrier Info (2U)
                 linha_2_content = f"2U{companhia}  0008    {data_emissao}{data_emissao}{data_emissao}Created by AMS Team Dnata Brasil    P"
                 linha_2 = linha_2_content.ljust(200 - 12) + "EN08" + f"{numero_linha:08}"
                 file.write(linha_2 + "\n")
@@ -264,15 +262,19 @@ def gerar_ssim_completo(excel_path, companias_list=None, output_file=None):
                     numero_linha += 1
                 
                 # ===== PROCESSAR VOOS =====
-                voos_processados = 0
+                processed_rows = set()
                 
                 for idx, row in df_cia.iterrows():
+                    if idx in processed_rows:
+                        continue
+                    
                     # Dados comuns
                     from_date, till_date = processar_periodo(row.get('FROM'), row.get('TILL'))
                     arrive_type, depart_type = processar_flt_type(row.get('FLT.TYPE'))
                     days_of_op = gerar_dias_operacionais_ssim(row)
                     aircraft = processar_aircraft_type(row.get('ATY'))
                     
+                    # ==== CASO 1: TURNAROUND (A.FLT e D.FLT na mesma linha) ====
                     a_flt = row.get('A.FLT')
                     d_flt = row.get('D.FLT')
                     sta = converter_horario(row.get('STA'))
@@ -280,33 +282,23 @@ def gerar_ssim_completo(excel_path, companias_list=None, output_file=None):
                     orig = str(row.get('ORIG', 'XXX'))[:3].upper() if not pd.isna(row.get('ORIG')) else 'XXX'
                     dest = str(row.get('DEST', 'XXX'))[:3].upper() if not pd.isna(row.get('DEST')) else 'XXX'
                     
-                    # ==== VOO DE CHEGADA (ARRIVAL) ====
+                    # Voo de chegada
                     if not pd.isna(a_flt) and a_flt != 'N/S' and orig != 'N/S':
                         airline_a = extrair_airline(a_flt)
                         if airline_a == companhia and sta:
                             flight_num_a = extrair_numero_voo(a_flt)
                             
                             # Calcular STD (2h antes se não tiver)
-                            try:
-                                std_calc = std if std else (datetime.strptime(sta, '%H%M') - timedelta(hours=2)).strftime('%H%M')
-                            except:
-                                std_calc = "0600"
+                            std_calc = std if std else (datetime.strptime(sta, '%H%M') - timedelta(hours=2)).strftime('%H%M')
                             
                             # Itinerary variation
-                            key_a = f"{companhia}_{flight_num_a}_ARR"
+                            key_a = f"{companhia}_{flight_num_a}"
                             flight_counter[key_a] = flight_counter.get(key_a, 0) + 1
                             itin_var = f"{flight_counter[key_a]:02d}"
                             
-                            # NEXT FLIGHT - LÓGICA COMPLETA
+                            # Next flight (se tem D.FLT válido na mesma linha)
                             next_flight = None
-                            # Caso 1: Turnaround (D.FLT válido e DEST não é N/S)
                             if not pd.isna(d_flt) and d_flt != 'N/S' and dest != 'N/S':
-                                airline_d = extrair_airline(d_flt)
-                                if airline_d == companhia:
-                                    flight_num_d = extrair_numero_voo(d_flt)
-                                    next_flight = (companhia, flight_num_d)
-                            # Caso 2: Night Stop (DEST = N/S, D.FLT mostra voo de saída)
-                            elif dest == 'N/S' and not pd.isna(d_flt) and d_flt != 'N/S':
                                 airline_d = extrair_airline(d_flt)
                                 if airline_d == companhia:
                                     flight_num_d = extrair_numero_voo(d_flt)
@@ -334,22 +326,18 @@ def gerar_ssim_completo(excel_path, companias_list=None, output_file=None):
                             )
                             file.write(linha_ssim + "\n")
                             numero_linha += 1
-                            voos_processados += 1
                     
-                    # ==== VOO DE SAÍDA (DEPARTURE) ====
+                    # Voo de saída
                     if not pd.isna(d_flt) and d_flt != 'N/S' and dest != 'N/S':
                         airline_d = extrair_airline(d_flt)
                         if airline_d == companhia and std:
                             flight_num_d = extrair_numero_voo(d_flt)
                             
                             # Calcular STA (2h depois se não tiver)
-                            try:
-                                sta_calc = sta if sta and orig != 'N/S' else (datetime.strptime(std, '%H%M') + timedelta(hours=2)).strftime('%H%M')
-                            except:
-                                sta_calc = "1400"
+                            sta_calc = sta if sta else (datetime.strptime(std, '%H%M') + timedelta(hours=2)).strftime('%H%M')
                             
                             # Itinerary variation
-                            key_d = f"{companhia}_{flight_num_d}_DEP"
+                            key_d = f"{companhia}_{flight_num_d}"
                             flight_counter[key_d] = flight_counter.get(key_d, 0) + 1
                             itin_var = f"{flight_counter[key_d]:02d}"
                             
@@ -370,16 +358,17 @@ def gerar_ssim_completo(excel_path, companias_list=None, output_file=None):
                                 arr_time=sta_calc,
                                 arr_timezone="+0000",
                                 aircraft_type=aircraft,
-                                next_flight_data=None,  # Departure não tem next flight
+                                next_flight_data=None,
                                 line_number=numero_linha
                             )
                             file.write(linha_ssim + "\n")
                             numero_linha += 1
-                            voos_processados += 1
+                    
+                    processed_rows.add(idx)
                 
-                print(f"✅ {companhia}: {voos_processados} voos gerados")
+                print(f"✅ {companhia}: {len(df_cia)} registros processados")
             
-            # ===== FOOTER ÚNICO (para todas as companhias) =====
+            # ===== FOOTER ÚNICO =====
             # 4 linhas de zeros
             for _ in range(4):
                 file.write("0" * 200 + "\n")
@@ -406,7 +395,7 @@ def gerar_ssim_completo(excel_path, companias_list=None, output_file=None):
         traceback.print_exc()
         return None
 
-# Funções de compatibilidade com app.py
+# Funções de compatibilidade
 def gerar_ssim_w25_single_airline(excel_path, codigo_iata, output_file=None):
     return gerar_ssim_completo(excel_path, [codigo_iata], output_file)
 
@@ -417,5 +406,5 @@ def gerar_ssim_w25_todas_companias(excel_path, output_file=None):
     return gerar_ssim_completo(excel_path, None, output_file)
 
 if __name__ == "__main__":
-    print("Conversor Escala Holandesa para SSIM - VERSÃO FINAL")
+    print("Conversor Escala Holandesa para SSIM - VERSÃO CORRIGIDA")
     print("AMS Team - Capacity Dnata Brasil - 2025")
