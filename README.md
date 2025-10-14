@@ -1,11 +1,11 @@
 # ✈️ AMS SSIM Converter
 
-**Professional Dutch Schedule (Escala Holandesa) to IATA SSIM converter**  
+**Professional Dutch Schedule to IATA SSIM converter**  
 **Developed by Capacity Dnata Brasil - AMS Team**
 
 ## 🔧 Features
 
-* ✅ **Escala Holandesa format support** - Specialized for Amsterdam Schiphol Airport operations
+* ✅ **Dutch Schedule format support** - Specialized for Amsterdam Schiphol Airport operations
 * ✅ **SSIM compliance** - Standard 200-character line format
 * ✅ **Link flights** - Automatic turnaround and night stop processing
 * ✅ **AMS timezone processing** - Native +0100 (CET/CEST) support

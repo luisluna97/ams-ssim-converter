@@ -2,14 +2,14 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import os
-from w25_to_ssim_converter import gerar_ssim_w25_single_airline, gerar_ssim_w25_todas_companias, gerar_ssim_w25_multiplas_companias, extrair_airline_w25
+from w25_to_ssim_converter import gerar_ssim_w25_single_airline, gerar_ssim_w25_todas_companias, gerar_ssim_w25_multiplas_companias, extrair_airline
 from version import get_version_info
 
 # Traduções
 TRANSLATIONS = {
     'en': {
         'title': 'AMS SSIM Converter',
-        'subtitle': 'Dutch Schedule (Escala Holandesa) Converter • AMS Team - Capacity Dnata Brasil',
+        'subtitle': 'Dutch Schedule Converter • AMS Team - Capacity Dnata Brasil',
         'tagline': 'Transform Amsterdam schedules to IATA SSIM format',
         'help_title': 'Help & Format Info',
         'help_content': '''
@@ -42,7 +42,7 @@ TRANSLATIONS = {
     },
     'nl': {
         'title': 'AMS SSIM Converter',
-        'subtitle': 'Escala Holandesa Converter • AMS Team - Capacity Dnata Brasil',
+        'subtitle': 'Dutch Schedule Converter • AMS Team - Capacity Dnata Brasil',
         'tagline': 'Transformeer Amsterdam schema\'s naar IATA SSIM formaat',
         'help_title': 'Help & Formaat Info',
         'help_content': '''
@@ -167,9 +167,9 @@ def main():
         with st.expander(f"📋 {t['release_title']}"):
             st.markdown(f"""
             ### v{version_info['version']} - {version_info['build_date']}
-            ✨ Escala Holandesa (Dutch Schedule) to SSIM conversion
+            ✨ Dutch Schedule to SSIM conversion
             🇳🇱 Dutch orange theme + bilingual (EN/NL)
-            🔗 Turnarounds and night stops processing
+            🔗 Turnarounds and night stops with Next Flight
             ⏰ AMS timezone (+0100) support
             📊 Multiple Airlines (Custom Selection) mode
             """)
@@ -200,8 +200,8 @@ def main():
                 if col in df.columns:
                     for flight in df[col].dropna():
                         if flight != 'N/S':
-                            airline = extrair_airline_w25(flight)
-                            if airline != 'XX':
+                            airline = extrair_airline(flight)
+                            if airline:
                                 airlines.add(airline)
             
             airlines = sorted(list(airlines))
