@@ -28,16 +28,31 @@ def extrair_airline(flight_number):
     return None
 
 def extrair_numero_voo(flight_number):
-    """Extrai número do voo - CORRIGIDO para pegar números DEPOIS das letras"""
+    """
+    Extrai número do voo - LÓGICA SIMPLES
+    1. Sempre os 2 primeiros caracteres são a companhia
+    2. O resto é o número do voo
+    3. Preencher com zeros até ter 4 dígitos
+    Exemplo: 6E21 → remove 6E → fica 21 → zfill(4) → 0021
+    """
     if pd.isna(flight_number) or flight_number == 'N/S':
         return None
+    
+    # Converter para string
     flight_str = str(flight_number).strip().upper()
-    # Pular letras iniciais e pegar números (ex: 6E0021 → 0021)
-    match = re.search(r'^[A-Z]*([0-9]+)', flight_str)
-    if match:
-        numero = match.group(1)
-        return numero.zfill(4)  # Apenas zfill, SEM truncar
-    return None
+    
+    # Remover os 2 primeiros caracteres (airline)
+    if len(flight_str) > 2:
+        numero_parte = flight_str[2:]  # Pega tudo depois dos 2 primeiros
+        
+        # Remover caracteres não numéricos
+        numero_limpo = re.sub(r'[^0-9]', '', numero_parte)
+        
+        if numero_limpo:
+            # Preencher com zeros até 4 dígitos
+            return numero_limpo.zfill(4)
+    
+    return "0001"  # Fallback
 
 def processar_aircraft_type(aty_value):
     if pd.isna(aty_value):
