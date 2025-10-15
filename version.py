@@ -3,8 +3,8 @@
 Sistema de versionamento - AMS SSIM Converter
 """
 
-VERSION = "1.0.0"
-BUILD_DATE = "2025-10-14"
+VERSION = "1.0.1"
+BUILD_DATE = "2025-10-15"
 DESCRIPTION = "W25 Amsterdam Schedule to IATA SSIM Converter"
 
 def get_version_info():

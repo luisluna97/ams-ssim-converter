@@ -5,6 +5,31 @@ All notable changes to the AMS SSIM Converter project will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+---
+
+## [1.0.1] - 2025-10-15
+
+### Fixed
+- 🐛 **Flight Number Extraction Bug**: Fixed regex to correctly extract flight numbers from airlines with numeric codes
+  - Airlines like `6E` (IndiGo) were extracting wrong numbers
+  - Example: `6E0021` was extracting as `0006` instead of `0021`
+  - **Root Cause**: Regex `r'([0-9]+)'` was capturing first digit (6) instead of full number (0021)
+  - **Solution**: Changed to `r'^[A-Z]*([0-9]+)'` to skip letters and capture numbers after
+  - **Impact**: All numeric airline codes now work correctly (6E, 9W, etc.)
+
+### Changed
+- 🔧 **Flight Number Processing**: Removed `[:4]` truncation to support longer flight numbers
+  - Previous: `numero.zfill(4)[:4]` (truncated at 4 digits)
+  - Current: `numero.zfill(4)` (preserves all digits, zero-pads if needed)
+
+### Test Results
+- ✅ `6E0021` → `0021` (previously: `0006`)
+- ✅ `6E0022` → `0022` (previously: `0006`)
+- ✅ All 18 airlines: 1,481 flights processed correctly
+- ✅ All lines: Exactly 200 characters
+
+---
+
 ## [1.0.0] - 2025-10-14
 
 ### Added - Initial Release

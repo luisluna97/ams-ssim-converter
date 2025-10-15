@@ -28,11 +28,16 @@ def extrair_airline(flight_number):
     return None
 
 def extrair_numero_voo(flight_number):
+    """Extrai número do voo - CORRIGIDO para pegar números DEPOIS das letras"""
     if pd.isna(flight_number) or flight_number == 'N/S':
         return None
     flight_str = str(flight_number).strip().upper()
-    match = re.search(r'([0-9]+)', flight_str)
-    return match.group(1).zfill(4)[:4] if match else None
+    # Pular letras iniciais e pegar números (ex: 6E0021 → 0021)
+    match = re.search(r'^[A-Z]*([0-9]+)', flight_str)
+    if match:
+        numero = match.group(1)
+        return numero.zfill(4)  # Apenas zfill, SEM truncar
+    return None
 
 def processar_aircraft_type(aty_value):
     if pd.isna(aty_value):
@@ -251,12 +256,19 @@ def gerar_ssim_completo(excel_path, companias_list=None, output_file=None):
                     orig = str(row.get('ORIG', 'XXX'))[:3].upper() if not pd.isna(row.get('ORIG')) else 'XXX'
                     dest = str(row.get('DEST', 'XXX'))[:3].upper() if not pd.isna(row.get('DEST')) else 'XXX'
                     
-                    # VOO DE CHEGADA
+                    # VOO DE CHEGADA (ORIG → AMS)
                     if not pd.isna(a_flt) and a_flt != 'N/S' and orig != 'N/S':
                         airline_a = extrair_airline(a_flt)
                         if airline_a == companhia and sta:
                             flight_num_a = extrair_numero_voo(a_flt)
-                            std_calc = std if std else (datetime.strptime(sta, '%H%M') - timedelta(hours=2)).strftime('%H%M')
+                            
+                            # NÃO calculamos STD de origem - usamos STA de AMS como referência
+                            # Horário de partida = STA menos 2h (genérico, pois não sabemos o real)
+                            try:
+                                sta_time = datetime.strptime(sta, '%H%M')
+                                std_origem = (sta_time - timedelta(hours=2)).strftime('%H%M')
+                            except:
+                                std_origem = "0600"
                             
                             key_a = f"{companhia}_{flight_num_a}_ARR"
                             flight_counter[key_a] = flight_counter.get(key_a, 0) + 1
@@ -275,27 +287,34 @@ def gerar_ssim_completo(excel_path, companias_list=None, output_file=None):
                                     flight_num_d = extrair_numero_voo(d_flt)
                                     next_flight = (companhia, flight_num_d)
                             
-                            # Se não tem next flight, repetir próprio
                             if not next_flight:
                                 next_flight = (companhia, flight_num_a)
                             
+                            # Construir linha: ORIG → AMS
                             linha_ssim = construir_linha_ssim(
                                 companhia, flight_num_a, itin_var, "01", arrive_type,
                                 from_date, till_date, days_of_op,
-                                orig, std_calc, "+0000",
-                                "AMS", sta, "+0100",
+                                orig, std_origem, "+0000",  # Horário de origem é calculado (não temos real)
+                                "AMS", sta, "+0100",  # Horário de AMS é REAL da malha
                                 aircraft, next_flight, numero_linha
                             )
                             file.write(linha_ssim + "\n")
                             numero_linha += 1
                             voos_gerados += 1
                     
-                    # VOO DE SAÍDA
+                    # VOO DE SAÍDA (AMS → DEST)
                     if not pd.isna(d_flt) and d_flt != 'N/S' and dest != 'N/S':
                         airline_d = extrair_airline(d_flt)
                         if airline_d == companhia and std:
                             flight_num_d = extrair_numero_voo(d_flt)
-                            sta_calc = (datetime.strptime(std, '%H%M') + timedelta(hours=2)).strftime('%H%M')
+                            
+                            # NÃO calculamos STA de destino - usamos STD de AMS como referência
+                            # Horário de chegada = STD mais 2h (genérico, pois não sabemos o real)
+                            try:
+                                std_time = datetime.strptime(std, '%H%M')
+                                sta_destino = (std_time + timedelta(hours=2)).strftime('%H%M')
+                            except:
+                                sta_destino = "1400"
                             
                             key_d = f"{companhia}_{flight_num_d}_DEP"
                             flight_counter[key_d] = flight_counter.get(key_d, 0) + 1
@@ -304,11 +323,12 @@ def gerar_ssim_completo(excel_path, companias_list=None, output_file=None):
                             # Departure repete própria informação
                             next_flight = (companhia, flight_num_d)
                             
+                            # Construir linha: AMS → DEST
                             linha_ssim = construir_linha_ssim(
                                 companhia, flight_num_d, itin_var, "01", depart_type,
                                 from_date, till_date, days_of_op,
-                                "AMS", std, "+0100",
-                                dest, sta_calc, "+0000",
+                                "AMS", std, "+0100",  # Horário de AMS é REAL da malha
+                                dest, sta_destino, "+0000",  # Horário de destino é calculado (não temos real)
                                 aircraft, next_flight, numero_linha
                             )
                             file.write(linha_ssim + "\n")
